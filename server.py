@@ -25,7 +25,7 @@ sys.path.append('gen-py')
 sys.path.insert(0, glob.glob('/home/yaoliu/src_code/local/lib/lib/python2.7/site-packages')[0])
 
 from chord import FileStore
-from chord.ttypes import InvalidOperation, Operation, RFileMetadata, RFile, NodeID
+from chord.ttypes import SystemException, RFileMetadata, RFile, NodeID
 
 from thrift.transport import TSocket
 from thrift.transport import TTransport
@@ -39,19 +39,19 @@ import socket
 
 class FileStoreHandler:
     def __init__(self, ip, port):
-        self.log = {}
         self.files = {}
         self.fingertable = []
-        self.node = NodeID()
-        self.nodeid_obj.id = hashlib.sha256(str(ip)+":"+str(port)).hexdigest()
+        self.nodeid_obj = NodeID()
+        self.nodeid_obj.id = unicode(hashlib.sha256(str(ip) + ":" + str(port)).hexdigest())
         self.nodeid_obj.ip = ip
-        self.nodeid_obj.port = port
-        
-        
+        self.nodeid_obj.port = port        
 
     def writeFile(self, rFile):
         filename = rFile.meta.filename
         file_id = hashlib.sha256(filename).hexdigest()
+
+        if self.nodeid_obj != self.findSucc(file_id):
+            raise SystemException("The node, {} does not own this file".format(self.nodeid_obj))
 
         if file_id in self.files:
             self.files[file_id].content = rFile.content
@@ -70,32 +70,83 @@ class FileStoreHandler:
         else:
             raise SystemException("File {} not found.".format(filename))
 
+        
     def setFingertable(self, node_list):
-        """
-        Parameters:
-         - node_list
-        """
-        pass
+        self.fingertable = node_list
 
+        
     def findSucc(self, key):
-        """
-        Parameters:
-         - key
-        """
-        pass
+        if int(self.nodeid_obj.id, 16) < int(key, 16) and int(key,16) <= int(self.getNodeSucc().id, 16):
+            return self.getNodeSucc()
+
+        pred = self.findPred(key)
+        client, transport = get_client_and_transport_objs(pred)
+        transport.open()
+        succ_node = client.getNodeSucc()
+        transport.close()
+        return succ_node
+                
 
     def findPred(self, key):
-        """
-        Parameters:
-         - key
-        """
-        pass
+        print ("we are in the findPred function")
+        if int(self.nodeid_obj.id, 16) < int(key, 16) and int(key, 16) <= int(self.getNodeSucc().id, 16):
+            print("we are returning a node obj")
+            return self.nodeid_obj
+        else:
+            print("this isn't the fucking node so we are searching for another one")
+            curr_node = self.node_finder(key)
+            print("curr_node", curr_node.id)
+            print("this node", self.nodeid_obj.id)
+            if curr_node.id == self.nodeid_obj.id:
+                print('We were the closest preceding node')
+                return self.getNodeSucc()
+            
+            print("we returned from the node_finder function")
+            client, transport = get_client_and_transport_objs(curr_node)
+            print("we get the client and transport objs")
+            transport.open()
+            print("we opened the transport")
+            curr_node_succ = client.getNodeSucc()
+            print("we got he node succ")
+            transport.close()
+            print("closed transport")
+            while not int(curr_node.id, 16) < int(key, 16) and int(key, 16) <= int(curr_node_succ.id, 16):
+                curr_node = client.findPred(key)
+                client, transport = get_client_and_transport_objs(curr_node)
+                transport.open()
+                curr_node_succ = client.getNodeSucc()
+                transport.close()
+        print("exiting findPred")
+
 
     def getNodeSucc(self):
-        pass
+        print ("we are in the getNodeSucc function of the client whatever that means")
+        if len(self.fingertable) == 0:
+            raise SystemException("Something is wrong with this node's fingertable.")
+        print("we are returning the node's succ")
+        return self.fingertable[0]
+            
+
+    def node_finder(self, key):
+        key = int(key, 16)
+        for i in range(255, 0, -1):
+            if int(self.fingertable[i].id, 16) < key:
+                return self.fingertable[i]
+        return self.nodeid_obj
+
+
+def get_client_and_transport_objs(node):
+    transport = TSocket.TSocket(node.ip, node.port)
+    # Buffering is critical. Raw sockets are very slow
+    transport = TTransport.TBufferedTransport(transport)
+    # Wrap in a protocol
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+    # Create a client to use the protocol encoder
+    client = FileStore.Client(protocol)
+    return client, transport
 
 if __name__ == '__main__':
-    ip_add = socket.gethostname()
+    ip_add = socket.gethostbyname(socket.gethostname())
     handler = FileStoreHandler(ip_add, int(sys.argv[1]))
     processor = FileStore.Processor(handler)
     transport = TSocket.TServerSocket(port=int(sys.argv[1]))

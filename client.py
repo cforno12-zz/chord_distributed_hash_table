@@ -25,31 +25,45 @@ sys.path.append('gen-py')
 sys.path.insert(0, glob.glob('/home/yaoliu/src_code/local/lib/lib/python2.7/site-packages')[0])
 
 from chord import FileStore
-from chord.ttypes import InvalidOperation, Operation, Work
+from chord.ttypes import SystemException, RFileMetadata, RFile, NodeID
 
 from thrift import Thrift
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 
+import hashlib
+
 
 def main():
+    print ("making socket")
     # Make socket
     transport = TSocket.TSocket(sys.argv[1], int(sys.argv[2]))
 
+    print("making transport")
     # Buffering is critical. Raw sockets are very slow
     transport = TTransport.TBufferedTransport(transport)
 
+    print("making protocol")
     # Wrap in a protocol
     protocol = TBinaryProtocol.TBinaryProtocol(transport)
 
+    print("making client")
     # Create a client to use the protocol encoder
     client = FileStore.Client(protocol)
 
     # Connect!
     transport.open()
+    print("transport opened")
 
-    # write file
+    file_obj = RFile()
+    file_obj.meta = RFileMetadata()
+    file_obj.string = "please work, i dont want to do this anymore"
+    file_obj.meta.filename = "sample.txt"
+    file_obj.meta.contentHash = hashlib.sha256(file_obj.meta.filename).hexdigest()
+
+    client.writeFile(file_obj)
+
     # Close!
     transport.close()
 
