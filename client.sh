@@ -1,2 +1,2 @@
 ./init nodes.txt
-python client.py remote05 9093
+python client.py remote02 9093

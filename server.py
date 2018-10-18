@@ -43,7 +43,7 @@ class FileStoreHandler:
         self.fingertable = []
         self.nodeid_obj = NodeID()
         self.nodeid_obj.id = unicode(hashlib.sha256(str(ip) + ":" + str(port)).hexdigest())
-        self.nodeid_obj.ip = ip
+        self.nodeid_obj.ip = unicode(ip)
         self.nodeid_obj.port = port        
 
     def writeFile(self, rFile):
@@ -80,6 +80,9 @@ class FileStoreHandler:
             return self.getNodeSucc()
 
         pred = self.findPred(key)
+        if pred.id == self.nodeid_obj.id or self.nodeid_obj.id == unicode(int(key, 16)):
+            return self.getNodeSucc()
+
         client, transport = get_client_and_transport_objs(pred)
         transport.open()
         succ_node = client.getNodeSucc()
@@ -88,55 +91,45 @@ class FileStoreHandler:
                 
 
     def findPred(self, key):
-        print ("we are in the findPred function")
-        if int(self.nodeid_obj.id, 16) < int(key, 16) and int(key, 16) <= int(self.getNodeSucc().id, 16):
-            print("we are returning a node obj")
-            return self.nodeid_obj
-        else:
-            print("this isn't the fucking node so we are searching for another one")
-            curr_node = self.node_finder(key)
-            print("curr_node", curr_node.id)
-            print("this node", self.nodeid_obj.id)
-            if curr_node.id == self.nodeid_obj.id:
-                print('We were the closest preceding node')
-                return self.getNodeSucc()
-            
-            print("we returned from the node_finder function")
-            client, transport = get_client_and_transport_objs(curr_node)
-            print("we get the client and transport objs")
-            transport.open()
-            print("we opened the transport")
-            curr_node_succ = client.getNodeSucc()
-            print("we got he node succ")
-            transport.close()
-            print("closed transport")
-            while not int(curr_node.id, 16) < int(key, 16) and int(key, 16) <= int(curr_node_succ.id, 16):
-                curr_node = client.findPred(key)
-                client, transport = get_client_and_transport_objs(curr_node)
-                transport.open()
-                curr_node_succ = client.getNodeSucc()
-                transport.close()
-        print("exiting findPred")
+        # we have to check if the fingertable is properly set
+        if len(self.fingertable) == 0:
+            raise SystemException("Fingertable is not properly set for this node, {}".format(self.nodeid_obj))
 
+        nodehash = int(self.nodeid_obj.id.decode('utf-8'),16)
+        tempkey = key
+        key = int(key,16)
+        list_len = len(self.fingertable)
+        
+        for i in range(list_len-1, 0, -1):
+            curr_node_key = int(self.fingertable[i].id.decode('utf-8'),16)
+
+            cond1 = curr_node_key > nodehash and curr_node_key < key
+            cond2 = curr_node_key < key and key < nodehash
+            cond3 = curr_node_key > nodehash and key < nodehash
+
+            if cond1 or cond2 or cond3:
+                client, transport = get_client_and_transport_objs(self.fingertable[i])
+                transport.open()
+                true_pred = client.findPred(tempkey)
+                transport.close()
+                return true_pred
+
+        return self.nodeid_obj
+            
 
     def getNodeSucc(self):
-        print ("we are in the getNodeSucc function of the client whatever that means")
         if len(self.fingertable) == 0:
             raise SystemException("Something is wrong with this node's fingertable.")
-        print("we are returning the node's succ")
         return self.fingertable[0]
+
+    def getnodeobj():
+        return self.nodeid_obj
             
 
-    def node_finder(self, key):
-        key = int(key, 16)
-        for i in range(255, 0, -1):
-            if int(self.fingertable[i].id, 16) < key:
-                return self.fingertable[i]
-        return self.nodeid_obj
 
 
 def get_client_and_transport_objs(node):
-    transport = TSocket.TSocket(node.ip, node.port)
+    transport = TSocket.TSocket(node.ip.decode('utf-8'), node.port)
     # Buffering is critical. Raw sockets are very slow
     transport = TTransport.TBufferedTransport(transport)
     # Wrap in a protocol

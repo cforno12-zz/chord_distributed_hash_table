@@ -36,33 +36,40 @@ import hashlib
 
 
 def main():
-    print ("making socket")
     # Make socket
     transport = TSocket.TSocket(sys.argv[1], int(sys.argv[2]))
 
-    print("making transport")
     # Buffering is critical. Raw sockets are very slow
     transport = TTransport.TBufferedTransport(transport)
 
-    print("making protocol")
     # Wrap in a protocol
     protocol = TBinaryProtocol.TBinaryProtocol(transport)
 
-    print("making client")
     # Create a client to use the protocol encoder
     client = FileStore.Client(protocol)
 
     # Connect!
     transport.open()
-    print("transport opened")
+
 
     file_obj = RFile()
     file_obj.meta = RFileMetadata()
     file_obj.string = "please work, i dont want to do this anymore"
     file_obj.meta.filename = "sample.txt"
     file_obj.meta.contentHash = hashlib.sha256(file_obj.meta.filename).hexdigest()
+    print("hash value of the file")
+    print(hashlib.sha256(file_obj.meta.filename).hexdigest())
 
+    print("Writing sample.txt to a server") 
     client.writeFile(file_obj)
+
+    print("reading sample.txt")
+    node  = client.readFile("sample.txt")
+    print (node)
+
+    print("trying to read a file that doesn't exist")
+    node = client.readFile("not_found.txt")
+    print(node)
 
     # Close!
     transport.close()
